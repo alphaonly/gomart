@@ -11,12 +11,40 @@ type ContextKey int
 
 const PKey1 ContextKey = 123455
 
-type duplicateChecker interface{
-	check(make(map[string]MetricsJSON))	
+type OrderType map[string]int
+
+var OrderTypes = OrderType{
+	"NEW":        1,
+	"PROCESSING": 2,
+	"INVALID":    3,
+	"PROCESSED":  4,
 }
 
+type User struct {
+	user       string
+	password   string
+	accural    int64
+	withdrawal int64
+}
+type Order struct {
+	order   int64
+	user    string
+	accural int64
+	created time.Time
+}
+
+type Withdrawal struct {
+	user       string
+	created    time.Time
+	withdrawal int64
+}
+
+type Withdrawals map[time.Time]Withdrawal
+type Orders map[int64]Order
+
 type MetricsJSONSlice []MetricsJSON
-func (s *MetricsJSONSlice)check(m map[string]MetricsJSON){
+
+func (s *MetricsJSONSlice) check(m map[string]MetricsJSON) {
 
 }
 
@@ -24,8 +52,8 @@ func (s *MetricsJSONSlice)check(m map[string]MetricsJSON){
 func (s *MetricsJSONSlice) EnhancedDistinct() error {
 	m := make(map[string]MetricsJSON)
 	for _, e := range *s {
-		
-		if e.MType == "counter"{
+
+		if e.MType == "counter" {
 			c, exists := m[e.ID]
 			if exists {
 				sum := int64(*e.Delta + *c.Delta)

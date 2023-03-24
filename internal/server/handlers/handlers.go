@@ -592,7 +592,8 @@ func (h *Handlers) NewRouter() chi.Router {
 
 		//The sequence for get compressed metrics html list
 		//getListCompressed = handleList(compressList(writeList()))
-		getListCompressed = h.HandleGetMetricFieldListSimple(nil)
+		getListCompressed = h.HandleGetMetricFieldListSimple(nil)		
+	
 	)
 	r := chi.NewRouter()
 	//
@@ -611,9 +612,17 @@ func (h *Handlers) NewRouter() chi.Router {
 		r.Post("/updates", postJSONAndGetCompressedBatch)
 		r.Post("/updates/", postJSONAndGetCompressedBatch)
 		r.Post("/update/{TYPE}/{NAME}/{VALUE}", h.HandlePostMetric)
-
 		r.Post("/update/{TYPE}/{NAME}/", h.HandlePostErrorPattern)
 		r.Post("/update/{TYPE}/", h.HandlePostErrorPatternNoName)
+
+		r.Post("/api/{USER}/register", h.HandlePostUserRegister(nil))
+		r.Post("/api/{USER}/login", h.HandlePostUserLogin(nil))
+		r.Post("/api/{USER}/orders", h.HandlePostUserOrders(nil))
+		r.Post("/api/{USER}/balance/withdraw", h.HandlePostUserBalanceWithdraw(nil))
+		
+		r.Get("/api/{USER}/orders", h.HandleGetUserOrders(nil))
+		r.Get("/api/{USER}/balance", h.HandleGetUserBalance(nil))
+		r.Get("/api/{USER}/withdrawals", h.HandleGetUserWithdrawals(nil))
 
 	})
 
@@ -730,5 +739,64 @@ func (h *Handlers) HandleCheckHealth(w http.ResponseWriter, r *http.Request) {
 func logFatal(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func (h *Handlers) HandlePostUserRegister(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandlePostUserRegister invoked")
+
+		//Validation
+		//Handling
+		//Response
+	}
+}
+func (h *Handlers) HandlePostUserLogin(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandlePostUserLogin invoked")
+		//Validation
+		//Handling
+		//Response
+
+	}
+}
+func (h *Handlers) HandlePostUserOrders(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandlePostUserOrders invoked")
+		//Validation
+		//Handling
+		//Response
+	}
+}
+func (h *Handlers) HandleGetUserOrders(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandleGetUserOrders invoked")
+		//Validation
+		//Handling
+		//Response
+	}
+}
+func (h *Handlers) HandleGetUserBalance(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandleGetUserBalance invoked")
+		//Validation
+		//Handling
+		//Response
+	}
+}
+func (h *Handlers) HandlePostUserBalanceWithdraw(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandlePostUserBalanceWithdraw invoked")
+		//Validation
+		//Handling
+		//Response
+	}
+}
+func (h *Handlers) HandleGetUserWithdrawals(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandleGetUserWithdrawals invoked")
+		//Validation
+		//Handling
+		//Response
 	}
 }
