@@ -50,14 +50,14 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// маршрутизация запросов обработчику
 	s.httpServer = &http.Server{
-		Addr: s.configuration.Address,
+		Addr: s.configuration.RunAddress,
 		Handler:  s.handlers.NewRouter(),
 	}
 
-	s.restoreData(ctx, s.ExternalStorage)
+	// s.restoreData(ctx, s.ExternalStorage)
 
 	go s.ListenData(ctx)
-	go s.ParkData(ctx, s.ExternalStorage)
+	// go s.ParkData(ctx, s.ExternalStorage)
 
 	osSignal := make(chan os.Signal, 1)
 	signal.Notify(osSignal, os.Interrupt)
@@ -74,69 +74,69 @@ func (s Server) Shutdown(ctx context.Context) error {
 	return err
 }
 
-func (s Server) restoreData(ctx context.Context, storageFrom stor.Storage) {
-	if storageFrom == nil {
-		log.Println("external storage  not initiated ")
-		return
-	}
-	if s.configuration.Restore {
-		mvList, err := storageFrom.GetAllMetrics(ctx)
-		if err != nil {
-			log.Println("cannot initially read metrics from file storage")
-			return
-		}
-		if len(*mvList) == 0 {
-			log.Println("file storage is empty, nothing to recover")
-			return
-		}
+// func (s Server) restoreData(ctx context.Context, storageFrom stor.Storage) {
+// 	if storageFrom == nil {
+// 		log.Println("external storage  not initiated ")
+// 		return
+// 	}
+// 	if s.configuration.Restore {
+// 		mvList, err := storageFrom.GetAllMetrics(ctx)
+// 		if err != nil {
+// 			log.Println("cannot initially read metrics from file storage")
+// 			return
+// 		}
+// 		if len(*mvList) == 0 {
+// 			log.Println("file storage is empty, nothing to recover")
+// 			return
+// 		}
 
-		err = s.InternalStorage.SaveAllMetrics(ctx, mvList)
-		if err != nil {
-			log.Fatal("cannot save metrics to internal storage")
-		}
+// 		err = s.InternalStorage.SaveAllMetrics(ctx, mvList)
+// 		if err != nil {
+// 			log.Fatal("cannot save metrics to internal storage")
+// 		}
 
-	}
+// 	}
 
-}
+// }
 
-func (s Server) ParkData(ctx context.Context, storageTo stor.Storage) {
-	if storageTo == nil {
-		return
-	}
-	if s.handlers.Storage == storageTo {
-		log.Fatal("a try to save to it is own")
-		return
-	}
+// func (s Server) ParkData(ctx context.Context, storageTo stor.Storage) {
+// 	if storageTo == nil {
+// 		return
+// 	}
+// 	if s.handlers.Storage == storageTo {
+// 		log.Fatal("a try to save to it is own")
+// 		return
+// 	}
 
-	ticker := time.NewTicker(time.Duration(s.configuration.StoreInterval))
-	defer ticker.Stop()
+// 	ticker := time.NewTicker(time.Duration(s.configuration.StoreInterval))
+// 	defer ticker.Stop()
 
-DoItAgain:
-	select {
+// DoItAgain:
+// 	select {
 
-	case <-ticker.C:
-		{
+// 	case <-ticker.C:
+// 		{
 
-			mvList, err := s.InternalStorage.GetAllMetrics(ctx)
-			if err != nil {
-				log.Fatal("cannot read metrics from internal storage")
-			}
-			if mvList == nil {
-				log.Println("read insufficient, internal storage empty")
-			} else if len(*mvList) == 0 {
-				log.Println("internal storage is empty, nothing to save to file")
-			} else {
-				err = storageTo.SaveAllMetrics(ctx, mvList)
-				if err != nil {
-					log.Fatal("cannot write metrics to file storage:" + err.Error())
-				}
-				log.Println("saved to file")
-			}
+// 			mvList, err := s.InternalStorage.GetAllMetrics(ctx)
+// 			if err != nil {
+// 				log.Fatal("cannot read metrics from internal storage")
+// 			}
+// 			if mvList == nil {
+// 				log.Println("read insufficient, internal storage empty")
+// 			} else if len(*mvList) == 0 {
+// 				log.Println("internal storage is empty, nothing to save to file")
+// 			} else {
+// 				err = storageTo.SaveAllMetrics(ctx, mvList)
+// 				if err != nil {
+// 					log.Fatal("cannot write metrics to file storage:" + err.Error())
+// 				}
+// 				log.Println("saved to file")
+// 			}
 
-		}
-	case <-ctx.Done():
-		return
+// 		}
+// 	case <-ctx.Done():
+// 		return
 
-	}
-	goto DoItAgain
-}
+// 	}
+// 	goto DoItAgain
+// }

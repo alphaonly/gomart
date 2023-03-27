@@ -7,25 +7,26 @@ import (
 	"log"
 	"time"
 
-	metricsjson "github.com/alphaonly/gomart/internal/server/metricsJSON"
-	mVal "github.com/alphaonly/gomart/internal/server/metricvaluei"
-	storage "github.com/alphaonly/gomart/internal/server/storage/interfaces"
-	"github.com/jackc/pgx/v5"
+	"github.com/alphaonly/gomart/internal/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//	type Storage interface {
-//		GetMetric(ctx context.Context, name string) (mv *M.MetricValue, err error)
-//		SaveMetric(ctx context.Context, name string, mv *M.MetricValue) (err error)
-//		GetAllMetrics(ctx context.Context) (mvList *metricsjson.MetricsMapType, err error)
-//		SaveAllMetrics(ctx context.Context, mvList *metricsjson.MetricsMapType) (err error)
-//	}
+// GetUser(ctx context.Context, name string) (u *schema.User, err error)
+// SaveUser(ctx context.Context, u schema.User) (err error)
+
+// SaveOrder(ctx context.Context, o schema.Order) (err error)
+// GetOrdersList(ctx context.Context, u schema.User) (wl schema.Orders, err error)
+
+// SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error)
+// GetWithdrawalsList(ctx context.Context, u schema.User) (wl schema.Withdrawals, err error)
 
 //-d=postgres://postgres:mypassword@localhost:5432/yandexxx
 
 const selectLineUsersTable = `SELECT user_id, password, accural, withdrawal FROM public.users WHERE id=$1;`
-const selectAllUsersTable = `SELECT user_id,balance,withdrawn FROM public.users;`
-const selectAllWithdrawalsTable = `SELECT user_id, uploaded_at, withdrawal FROM public.withdrawals;`
+
+// const selectAllUsersTable = `SELECT user_id,balance,withdrawn FROM public.users;`
+const selectAllOrdersTableByUser = `SELECT order_id,user_id,accural, withdrawal FROM public.orders WHERE user_id = $1;`
+const selectAllWithdrawalsTableByUser = `SELECT user_id, uploaded_at, withdrawal FROM public.withdrawals WHERE user_id = $1;`
 
 const createOrUpdateIfExistsUsersTable = `
 	INSERT INTO public.users (user_id, password, accural, withdrawal) 
@@ -80,6 +81,10 @@ var message = []string{
 	0: "DBStorage:unable to connect to database",
 	1: "DBStorage:%v table has created",
 	2: "DBStorage:unable to create %v table",
+	3: "DBStorage:createOrUpdateIfExistsUsersTable error",
+	4: "DBStorage:QueryRow failed: %v\n",
+	5: "DBStorage:RowScan error",
+	6: "DBStorage:time cannot be parsed",
 }
 
 type dbUsers struct {
@@ -108,13 +113,13 @@ type DBStorage struct {
 	conn        *pgxpool.Conn
 }
 
-func createTable(ctx context.Context, s DBStorage, sql string, tableName string) error {
+func createTable(ctx context.Context, s DBStorage, checkSql string, createSql string, tableName string) error {
 
-	resp, err := s.pool.Exec(ctx, checkIfUsersTableExists)
+	resp, err := s.pool.Exec(ctx, checkSql)
 	if err != nil {
 		log.Println(message[1] + err.Error())
-		//create metrics Table
-		resp, err = s.pool.Exec(ctx, createUsersTable)
+		//create Table
+		resp, err = s.pool.Exec(ctx, createSql)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -126,7 +131,7 @@ func createTable(ctx context.Context, s DBStorage, sql string, tableName string)
 	return err
 }
 
-func NewDBStorage(ctx context.Context, dataBaseURL string) *storage.Storage {
+func NewDBStorage(ctx context.Context, dataBaseURL string) *DBStorage {
 	//get params
 	s := DBStorage{dataBaseURL: dataBaseURL}
 	//connect db
@@ -138,16 +143,16 @@ func NewDBStorage(ctx context.Context, dataBaseURL string) *storage.Storage {
 		return nil
 	}
 	// check users table exists
-	err = createTable(ctx, s, createOrUpdateIfExistsUsersTable, "Users")
+	err = createTable(ctx, s, checkIfUsersTableExists, createUsersTable, "Users")
 	logFatalf("error:", err)
 	// check orders table exists
-	err = createTable(ctx, s, createOrUpdateIfExistsOrdersTable, "Orders")
+	err = createTable(ctx, s, checkIfOrdersTableExists, createOrdersTable, "Orders")
 	logFatalf("error:", err)
 	// check withdrawals table exists
-	err = createTable(ctx, s, createOrUpdateIfExistsUsersTable, "Withdrawals")
+	err = createTable(ctx, s, checkIfWithdrawalsTableExists, createWithdrawalsTable, "Withdrawals")
 	logFatalf("error:", err)
 
-	return s
+	return &s
 }
 
 func logFatalf(mess string, err error) {
@@ -182,161 +187,153 @@ func (s *DBStorage) connectDB(ctx context.Context) (ok bool) {
 	return ok
 }
 
+// type Storage interface {
+// 	GetUser(ctx context.Context, name string) (u *schema.User, err error)
+// 	SaveUser(ctx context.Context, u schema.User) (err error)
 
+// 	SaveOrder(ctx context.Context, o schema.Order) (err error)
+// 	GetOrdersList(ctx context.Context, u schema.User) (wl schema.Orders, err error)
 
-func (s DBStorage) GetUser(ctx context.Context, name string) (u *User, err error) {
+// 	SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error)
+// 	GetWithdrawalsList(ctx context.Context, u schema.User) (wl schema.Withdrawals, err error)
+// }
+
+func (s DBStorage) GetUser(ctx context.Context, name string) (u *schema.User, err error) {
 	if !s.connectDB(ctx) {
 		return nil, errors.New(message[0])
 	}
 	defer s.conn.Release()
 	d := dbUsers{user_id: sql.NullString{String: name, Valid: true}}
 	row := s.conn.QueryRow(ctx, selectLineUsersTable, &d.user_id)
-
 	err = row.Scan(&d.user_id, &d.password, &d.accural, &d.withdrawal)
 	if err != nil {
 		log.Printf("QueryRow failed: %v\n", err)
 		return nil, err
 	}
 
-	return &User{
-		user:       d.user_id.String,
-		password:   d.password.String,
-		accural:    d.accural.Int64,
-		withdrawal: d.withdrawal.Int64,
+	return &schema.User{
+		User:       d.user_id.String,
+		Password:   d.password.String,
+		Accural:    d.accural.Int64,
+		Withdrawal: d.withdrawal.Int64,
 	}, nil
 }
-func (s DBStorage) SaveMetric(ctx context.Context, name string, mv *mVal.MetricValue) (err error) {
-	var m mVal.MetricValue
-	if mv == nil {
-		return errors.New(message[6])
-	}
-	m = *mv
+
+func (s DBStorage) SaveUser(ctx context.Context, u schema.User) (err error) {
 	if !s.connectDB(ctx) {
-		return errors.New(message[14])
+		return errors.New(message[0])
 	}
 	defer s.conn.Release()
 
-	var (
-		_type int
-		delta int64
-		value float64
-	)
-
-	switch v := m.GetInternalValue().(type) {
-	case int64:
-		{
-			_type = 1
-			delta = v
-		}
-	case float64:
-		{
-			_type = 2
-			value = v
-		}
-	default:
-		return errors.New(message[7])
+	d := dbUsers{
+		user_id:    sql.NullString{String: u.User, Valid: true},
+		password:   sql.NullString{String: u.Password, Valid: true},
+		accural:    sql.NullInt64{Int64: u.Accural, Valid: true},
+		withdrawal: sql.NullInt64{Int64: u.Withdrawal, Valid: true},
 	}
-	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsMetricsTable, name, _type, delta, value)
-	logFatalf("", err)
+
+	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsUsersTable, d.user_id, d.password, d.accural, d.withdrawal)
+	logFatalf(message[3], err)
 	log.Println(tag)
 	return err
 }
 
-// GetAllMetrics Restore data from database to mem storage
-func (s DBStorage) GetAllMetrics(ctx context.Context) (mvList *metricsjson.MetricsMapType, err error) {
+func (s DBStorage) GetOrdersList(ctx context.Context, u schema.User) (ol schema.Orders, err error) {
 	if !s.connectDB(ctx) {
-		return nil, errors.New(message[14])
+		return nil, errors.New(message[0])
 	}
 	defer s.conn.Release()
-	rows, err := s.conn.Query(ctx, selectAllMetricsTable)
+
+	ol = make(schema.Orders)
+
+	d := &dbOrders{user_id: sql.NullString{String: u.User, Valid: true}}
+
+	rows, err := s.conn.Query(ctx, selectAllOrdersTableByUser, d.user_id)
 	if err != nil {
-		log.Printf("QueryRow failed: %v\n", err)
+		log.Printf(message[4], err)
 		return nil, err
 	}
 	defer rows.Close()
-	m := make(metricsjson.MetricsMapType)
-	emptyList := make(metricsjson.MetricsMapType)
 	for rows.Next() {
-		d := dbMetrics{}
-		err = rows.Scan(&d.id, &d._type, &d.delta, &d.value)
-		if err != nil {
-			return nil, err
+		err = rows.Scan(d.order_id, d.user_id, d.accural, d.created_at)
+		logFatalf(message[5], err)
+		created, err := time.Parse(time.RFC3339, d.created_at.String)
+		logFatalf(message[6], err)
+		ol[d.order_id.Int64] = schema.Order{
+			Order:   d.order_id.Int64,
+			User:    d.user_id.String,
+			Accural: d.accural.Int64,
+			Created: created,
 		}
-		var mv mVal.MetricValue
-		switch d._type.Int64 {
-		case 1:
-			{
-				if !d.delta.Valid {
-					return &emptyList, errors.New(message[5])
-				}
-				mv = mVal.NewInt(d.delta.Int64)
-			}
-		case 2:
-			{
-				if !d.value.Valid {
-					return &emptyList, errors.New(message[5])
-				}
-				mv = mVal.NewFloat(d.value.Float64)
-			}
-		default:
-			log.Fatalf(message[4])
-		}
-		if !d.id.Valid {
-			return &emptyList, errors.New(message[5])
-		}
-		m[d.id.String] = mv
 	}
-	return &m, nil
+
+	return ol, nil
 }
 
-// SaveAllMetrics Park data to database
-func (s DBStorage) SaveAllMetrics(ctx context.Context, mvList *metricsjson.MetricsMapType) (err error) {
-	log.Println("DBStorage SaveAllMetrics invoked")
-	if mvList == nil {
-		return errors.New(message[6])
-	}
+func (s DBStorage) SaveOrder(ctx context.Context, o schema.Order) (err error) {
 	if !s.connectDB(ctx) {
-		return errors.New(message[14])
+		return errors.New(message[0])
+	}
+	d := &dbOrders{
+		order_id:   sql.NullInt64{Int64: o.Order, Valid: true},
+		user_id:    sql.NullString{String: o.User, Valid: true},
+		accural:    sql.NullInt64{Int64: o.Accural, Valid: true},
+		created_at: sql.NullString{String: o.Created.Format(time.RFC3339), Valid: true},
+	}
+
+	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsOrdersTable, d.order_id, d.user_id, d.accural, d.created_at)
+	logFatalf(message[3], err)
+	log.Println(tag)
+	return err
+}
+
+func (s DBStorage) SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error) {
+
+	if !s.connectDB(ctx) {
+		return errors.New(message[0])
 	}
 	defer s.conn.Release()
 
-	mv := *mvList
-
-	batch := &pgx.Batch{}
-	for k, v := range mv {
-		var d dbMetrics
-		switch value := v.(type) {
-		case *mVal.GaugeValue:
-			d = dbMetrics{
-				id:    sql.NullString{String: k, Valid: true},
-				_type: sql.NullInt64{Int64: 2, Valid: true},
-				value: sql.NullFloat64{Float64: value.GetInternalValue().(float64), Valid: true},
-				delta: sql.NullInt64{},
-			}
-		case *mVal.CounterValue:
-			d = dbMetrics{
-				id:    sql.NullString{String: k, Valid: true},
-				_type: sql.NullInt64{Int64: 1, Valid: true},
-				value: sql.NullFloat64{},
-				delta: sql.NullInt64{Int64: value.GetInternalValue().(int64), Valid: true},
-			}
-		default:
-			return errors.New(message[7])
-		}
-
-		batch.Queue(createOrUpdateIfExistsMetricsTable, d.id, d._type, d.delta, d.value)
+	d := dbWithdrawals{
+		user_id:    sql.NullString{String: w.User, Valid: true},
+		created_at: sql.NullString{String: w.Created.Format(time.RFC3339), Valid: true},
+		withdrawal: sql.NullInt64{Int64: w.Withdrawal, Valid: true},
 	}
-
-	br := s.conn.SendBatch(ctx, batch)
-	for range mv {
-		tag, err := br.Exec()
-		if err != nil {
-			logFatalf(message[9], err)
-			return err
-		}
-		log.Println(message[8] + tag.String())
-	}
-	defer br.Close()
-
-	return nil
+	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsWithdrawalsTable, d.user_id, d.created_at, d.withdrawal)
+	logFatalf(message[3], err)
+	log.Println(tag)
+	return err
 }
+func (s DBStorage) GetWithdrawalsList(ctx context.Context, u schema.User) (wl *schema.Withdrawals, err error) {
+	if !s.connectDB(ctx) {
+		return nil, errors.New(message[0])
+	}
+	defer s.conn.Release()
+
+	wl = new(schema.Withdrawals)
+
+	d := &dbWithdrawals{user_id: sql.NullString{String: u.User, Valid: true}}
+
+	rows, err := s.conn.Query(ctx, selectAllWithdrawalsTableByUser, d.user_id)
+	if err != nil {
+		log.Printf(message[4], err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(d.user_id, d.created_at, d.withdrawal)
+		logFatalf(message[5], err)
+		created, err := time.Parse(time.RFC3339, d.created_at.String)
+		logFatalf(message[6], err)
+
+		w := schema.Withdrawal{
+			User:       d.user_id.String,
+			Created:    created,
+			Withdrawal: d.withdrawal.Int64,
+		}
+		*wl = append(*wl, w)
+	}
+
+	return wl, nil
+}
+

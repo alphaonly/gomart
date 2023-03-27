@@ -45,10 +45,10 @@ func TestRun(t *testing.T) {
 			defer cancel()
 
 			var storage stor.Storage
-			if sc.DatabaseDsn == "" {
+			if sc.DatabaseURI == "" {
 				log.Fatal("no database url")
 			} else {
-				storage = db.NewDBStorage(ctx, sc.DatabaseDsn)
+				storage = db.NewDBStorage(ctx, sc.DatabaseURI)
 			}
 			handlers := &handlers.Handlers{}
 

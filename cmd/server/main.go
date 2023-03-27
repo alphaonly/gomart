@@ -10,8 +10,6 @@ import (
 	conf "github.com/alphaonly/gomart/internal/configuration"
 	"github.com/alphaonly/gomart/internal/server"
 	"github.com/alphaonly/gomart/internal/server/handlers"
-	"github.com/alphaonly/gomart/internal/server/storage/implementations/mapstorage"
-	"github.com/alphaonly/gomart/internal/signchecker"
 )
 
 func main() {
@@ -24,18 +22,16 @@ func main() {
 		externalStorage stor.Storage
 		internalStorage stor.Storage
 	)
-	externalStorage = nil
-	internalStorage = mapstorage.New()
+	// externalStorage = nil
+	// internalStorage = mapstorage.New()
 
-	if configuration.DatabaseDsn != "" {
-		externalStorage = nil
-		internalStorage = db.NewDBStorage(context.Background(), configuration.DatabaseDsn)
-	}
+	externalStorage = nil
+	internalStorage = db.NewDBStorage(context.Background(), configuration.DatabaseURI)
 
 	handlers := &handlers.Handlers{
 		Storage: internalStorage,
-		Signer:  signchecker.NewSHA256(configuration.Key),
-		Conf:    conf.ServerConfiguration{DatabaseDsn: configuration.DatabaseDsn},
+		// Signer:  signchecker.NewSHA256(configuration.Key),
+		Conf: conf.ServerConfiguration{DatabaseURI: configuration.DatabaseURI},
 	}
 
 	metricsServer := server.New(configuration, externalStorage, handlers)

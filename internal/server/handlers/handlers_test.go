@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"net/url"
@@ -10,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alphaonly/gomart/internal/server/storage/implementations/mapstorage"
+	storage "github.com/alphaonly/gomart/internal/server/storage/implementations/dbstorage"
 )
 
 func TestHandleMetric(t *testing.T) {
@@ -99,7 +100,7 @@ func TestHandleMetric(t *testing.T) {
 	}
 	fmt.Println("start!")
 
-	s := mapstorage.New()
+	s := storage.NewDBStorage(context.Background(),"")
 	h := Handlers{Storage: s}
 
 	r := h.NewRouter()

@@ -21,25 +21,25 @@ var OrderTypes = OrderType{
 }
 
 type User struct {
-	user       string
-	password   string
-	accural    int64
-	withdrawal int64
+	User       string `json:"user"`
+	Password   string `json:"password"`
+	Accural    int64  `json:"accural,omitempty"`
+	Withdrawal int64  `json:"withdrawal,omitempty"`
 }
 type Order struct {
-	order   int64
-	user    string
-	accural int64
-	created time.Time
+	Order   int64		`json:"order"`
+	User    string		`json:"user"`
+	Accural int64		`json:"accural,omitempty"`
+	Created time.Time	`json:"time"`
 }
 
 type Withdrawal struct {
-	user       string
-	created    time.Time
-	withdrawal int64
+	User       string		`json:"user"`
+	Created    time.Time	`json:"time"`
+	Withdrawal int64		`json:"withdrawal,omitempty"`
 }
 
-type Withdrawals map[time.Time]Withdrawal
+type Withdrawals []Withdrawal
 type Orders map[int64]Order
 
 type MetricsJSONSlice []MetricsJSON
