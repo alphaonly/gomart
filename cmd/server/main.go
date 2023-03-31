@@ -32,14 +32,15 @@ func main() {
 		Storage: internalStorage,
 		// Signer:  signchecker.NewSHA256(configuration.Key),
 		Conf: conf.ServerConfiguration{DatabaseURI: configuration.DatabaseURI},
+		EntityHandler: &handlers.EntityHandler{Storage: internalStorage},
 	}
 
-	metricsServer := server.New(configuration, externalStorage, handlers)
+	gmServer := server.New(configuration, externalStorage, handlers)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := metricsServer.Run(ctx)
+	err := gmServer.Run(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}

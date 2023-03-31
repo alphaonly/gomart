@@ -22,7 +22,7 @@ import (
 
 //-d=postgres://postgres:mypassword@localhost:5432/yandexxx
 
-const selectLineUsersTable = `SELECT user_id, password, accural, withdrawal FROM public.users WHERE id=$1;`
+const selectLineUsersTable = `SELECT user_id, password, accural, withdrawal FROM public.users WHERE user_id=$1;`
 
 // const selectAllUsersTable = `SELECT user_id,balance,withdrawn FROM public.users;`
 const selectAllOrdersTableByUser = `SELECT order_id,user_id,accural, withdrawal FROM public.orders WHERE user_id = $1;`
@@ -31,22 +31,22 @@ const selectAllWithdrawalsTableByUser = `SELECT user_id, uploaded_at, withdrawal
 const createOrUpdateIfExistsUsersTable = `
 	INSERT INTO public.users (user_id, password, accural, withdrawal) 
 	VALUES ($1, $2, $3, $4)
-	ON CONFLICT (id) DO UPDATE 
-  	SET password = $2,
-	  	accural = $3,
-		withdrawal = $4; 
+	ON CONFLICT (user_id) DO UPDATE 
+  	SET password 	= $2,
+	  	accural 	= $3,
+		withdrawal 	= $4; 
   	`
 const createOrUpdateIfExistsOrdersTable = `
 	  INSERT INTO public.orders (order_id, user_id, status,accural) 
 	  VALUES ($1, $2, $3)
-	  ON CONFLICT (id) DO UPDATE 
+	  ON CONFLICT (order_id) DO UPDATE 
 		SET password = $2,
 			accural = $3; 
 		`
 const createOrUpdateIfExistsWithdrawalsTable = `
 		INSERT INTO public.withdrawals (user_id, uploaded_at, withdrawal) 
 		VALUES ($1, $2, $3)
-		ON CONFLICT (id) DO UPDATE 
+		ON CONFLICT (user_id,uploaded_at) DO UPDATE 
 		  SET accural = $2,
 			withdrawn = $3; 
 		  `
@@ -54,23 +54,23 @@ const createOrUpdateIfExistsWithdrawalsTable = `
 const createUsersTable = `create table public.users
 	(	user_id varchar(40) not null primary key,
 		password  TEXT not null,
-		accural integer
+		accural integer,
 		withdrawal integer 
 	);`
 
 const createOrdersTable = `create table public.orders
 	(	order_id integer not null primary key,
 		user_id varchar(40) not null,
-		status integer
-		sum double precision
-		accural integer
+		status integer,
+		sum double precision,
+		accural integer,
 		uploaded_at TEXT not null 
 	);`
 
 const createWithdrawalsTable = `create table public.withdrawals
-	(	user_id varchar(40) not null primary key,
-		uploaded_at TEXT not null primary key,
-		withdrawal integer not null	
+	(	user_id 		varchar(40) primary key,
+		uploaded_at 	TEXT 		unique not null,
+		withdrawal 		integer 	not null	
 	);`
 
 const checkIfUsersTableExists = `SELECT 'public.users'::regclass;`
@@ -113,19 +113,19 @@ type DBStorage struct {
 	conn        *pgxpool.Conn
 }
 
-func createTable(ctx context.Context, s DBStorage, checkSql string, createSql string, tableName string) error {
+func createTable(ctx context.Context, s DBStorage, checkSql string, createSql string) error {
 
 	resp, err := s.pool.Exec(ctx, checkSql)
 	if err != nil {
-		log.Println(message[1] + err.Error())
+		log.Println(message[2] + err.Error())
 		//create Table
 		resp, err = s.pool.Exec(ctx, createSql)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf(message[1]+resp.String(), tableName)
+		log.Println(message[1] + resp.String())
 	} else {
-		log.Printf(message[2]+resp.String(), tableName)
+		log.Println(message[2] + resp.String())
 	}
 
 	return err
@@ -143,13 +143,13 @@ func NewDBStorage(ctx context.Context, dataBaseURL string) *DBStorage {
 		return nil
 	}
 	// check users table exists
-	err = createTable(ctx, s, checkIfUsersTableExists, createUsersTable, "Users")
+	err = createTable(ctx, s, checkIfUsersTableExists, createUsersTable)
 	logFatalf("error:", err)
 	// check orders table exists
-	err = createTable(ctx, s, checkIfOrdersTableExists, createOrdersTable, "Orders")
+	err = createTable(ctx, s, checkIfOrdersTableExists, createOrdersTable)
 	logFatalf("error:", err)
 	// check withdrawals table exists
-	err = createTable(ctx, s, checkIfWithdrawalsTableExists, createWithdrawalsTable, "Withdrawals")
+	err = createTable(ctx, s, checkIfWithdrawalsTableExists, createWithdrawalsTable)
 	logFatalf("error:", err)
 
 	return &s
@@ -210,7 +210,6 @@ func (s DBStorage) GetUser(ctx context.Context, name string) (u *schema.User, er
 		log.Printf("QueryRow failed: %v\n", err)
 		return nil, err
 	}
-
 	return &schema.User{
 		User:       d.user_id.String,
 		Password:   d.password.String,
@@ -336,4 +335,3 @@ func (s DBStorage) GetWithdrawalsList(ctx context.Context, u schema.User) (wl *s
 
 	return wl, nil
 }
-

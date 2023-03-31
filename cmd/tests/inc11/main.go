@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	metricvalueI "github.com/alphaonly/gomart/internal/server/metricvaluei"
 	db "github.com/alphaonly/gomart/internal/server/storage/implementations/dbstorage"
 )
 
@@ -25,8 +24,8 @@ const insertLineIntoMetricsTable = `
 func main() {
 
 	s := db.NewDBStorage(context.Background(), urlExample)
-	var mv metricvalueI.MetricValue = metricvalueI.NewInt(123)
+	// var mv metricvalueI.MetricValue = metricvalueI.NewInt(123)
 
-	s.SaveMetric(context.Background(), "PollCounter", &mv)
+	// s.SaveMetric(context.Background(), "PollCounter", &mv)
 	log.Println(s)
 }

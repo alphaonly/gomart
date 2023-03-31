@@ -7,9 +7,11 @@ import (
 )
 
 type PreviousBytes []byte
+type CtxUName string
 type ContextKey int
 
 const PKey1 ContextKey = 123455
+const CtxKeyUName ContextKey = 1343456
 
 type OrderType map[string]int
 
@@ -21,22 +23,30 @@ var OrderTypes = OrderType{
 }
 
 type User struct {
-	User       string `json:"user"`
+	User       string `json:"login"`
 	Password   string `json:"password"`
 	Accural    int64  `json:"accural,omitempty"`
 	Withdrawal int64  `json:"withdrawal,omitempty"`
 }
+
+func (u User) CheckIdentity(u2 *User) (ok bool) {
+	if u.User == u2.User && u.Password == u2.Password {
+		return true
+	}
+	return false
+}
+
 type Order struct {
-	Order   int64		`json:"order"`
-	User    string		`json:"user"`
-	Accural int64		`json:"accural,omitempty"`
-	Created time.Time	`json:"time"`
+	Order   int64     `json:"order"`
+	User    string    `json:"user"`
+	Accural int64     `json:"accural,omitempty"`
+	Created time.Time `json:"time"`
 }
 
 type Withdrawal struct {
-	User       string		`json:"user"`
-	Created    time.Time	`json:"time"`
-	Withdrawal int64		`json:"withdrawal,omitempty"`
+	User       string    `json:"user"`
+	Created    time.Time `json:"time"`
+	Withdrawal int64     `json:"withdrawal,omitempty"`
 }
 
 type Withdrawals []Withdrawal
