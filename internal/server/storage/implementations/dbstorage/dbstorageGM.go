@@ -20,62 +20,60 @@ import (
 // SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error)
 // GetWithdrawalsList(ctx context.Context, u schema.User) (wl schema.Withdrawals, err error)
 
-//-d=postgres://postgres:mypassword@localhost:5432/yandexxx
+// -d=postgres://postgres:mypassword@localhost:5432/yandex
+const (
+	selectLineUsersTable            = `SELECT user_id, password, accrual, withdrawal FROM public.users WHERE user_id=$1;`
+	selectLineOrdersTable           = `SELECT order_id, user_id, status, accrual, uploaded_at FROM public.orders WHERE order_id=$1;`
+	selectAllOrdersTableByUser      = `SELECT order_id, user_id,status, accrual, uploaded_at FROM public.orders WHERE user_id = $1;`
+	selectAllOrdersTableByStatus    = `SELECT order_id, user_id, status,accrual, uploaded_at  FROM public.orders WHERE status = $1;`
+	selectAllWithdrawalsTableByUser = `SELECT user_id,  uploaded_at, withdrawal FROM public.withdrawals WHERE user_id = $1;`
 
-const selectLineUsersTable = `SELECT user_id, password, accural, withdrawal FROM public.users WHERE user_id=$1;`
-
-// const selectAllUsersTable = `SELECT user_id,balance,withdrawn FROM public.users;`
-const selectAllOrdersTableByUser = `SELECT order_id,user_id,accural, withdrawal FROM public.orders WHERE user_id = $1;`
-const selectAllWithdrawalsTableByUser = `SELECT user_id, uploaded_at, withdrawal FROM public.withdrawals WHERE user_id = $1;`
-
-const createOrUpdateIfExistsUsersTable = `
-	INSERT INTO public.users (user_id, password, accural, withdrawal) 
+	createOrUpdateIfExistsUsersTable = `
+	INSERT INTO public.users (user_id, password, accrual, withdrawal) 
 	VALUES ($1, $2, $3, $4)
 	ON CONFLICT (user_id) DO UPDATE 
   	SET password 	= $2,
-	  	accural 	= $3,
+	  	accrual 	= $3,
 		withdrawal 	= $4; 
   	`
-const createOrUpdateIfExistsOrdersTable = `
-	  INSERT INTO public.orders (order_id, user_id, status,accural) 
-	  VALUES ($1, $2, $3)
-	  ON CONFLICT (order_id) DO UPDATE 
+	createOrUpdateIfExistsOrdersTable = `
+	  INSERT INTO public.orders (order_id, user_id, status,accrual) 
+	  VALUES ($1, $2, $3,$4)
+	  ON CONFLICT (order_id,user_id) DO UPDATE 
 		SET password = $2,
-			accural = $3; 
+			status = $3,
+		    accrual = $4; 
 		`
-const createOrUpdateIfExistsWithdrawalsTable = `
+	createOrUpdateIfExistsWithdrawalsTable = `
 		INSERT INTO public.withdrawals (user_id, uploaded_at, withdrawal) 
 		VALUES ($1, $2, $3)
 		ON CONFLICT (user_id,uploaded_at) DO UPDATE 
-		  SET accural = $2,
-			withdrawn = $3; 
+		  SET withdrawn = $3; 
 		  `
-
-const createUsersTable = `create table public.users
+	createUsersTable = `create table public.users
 	(	user_id varchar(40) not null primary key,
 		password  TEXT not null,
-		accural integer,
-		withdrawal integer 
+		accrual double precision,
+		withdrawal double precision 
 	);`
-
-const createOrdersTable = `create table public.orders
-	(	order_id integer not null primary key,
+	createOrdersTable = `create table public.orders
+	(	order_id integer not null, 
 		user_id varchar(40) not null,
-		status integer,
-		sum double precision,
-		accural integer,
-		uploaded_at TEXT not null 
+		status integer,		
+		accrual double precision,
+		uploaded_at TEXT not null, 
+		primary key (order_id,user_id)
 	);`
-
-const createWithdrawalsTable = `create table public.withdrawals
+	createWithdrawalsTable = `create table public.withdrawals
 	(	user_id 		varchar(40) primary key,
 		uploaded_at 	TEXT 		unique not null,
-		withdrawal 		integer 	not null	
+		withdrawal 		double precision 	not null	
 	);`
 
-const checkIfUsersTableExists = `SELECT 'public.users'::regclass;`
-const checkIfOrdersTableExists = `SELECT 'public.users'::regclass;`
-const checkIfWithdrawalsTableExists = `SELECT 'public.withdrawals'::regclass;`
+	checkIfUsersTableExists       = `SELECT 'public.users'::regclass;`
+	checkIfOrdersTableExists      = `SELECT 'public.orders'::regclass;`
+	checkIfWithdrawalsTableExists = `SELECT 'public.withdrawals'::regclass;`
+)
 
 var message = []string{
 	0: "DBStorage:unable to connect to database",
@@ -90,21 +88,22 @@ var message = []string{
 type dbUsers struct {
 	user_id    sql.NullString
 	password   sql.NullString
-	accural    sql.NullInt64
-	withdrawal sql.NullInt64
+	accural    sql.NullFloat64
+	withdrawal sql.NullFloat64
 }
 
 type dbOrders struct {
 	order_id   sql.NullInt64
 	user_id    sql.NullString
-	accural    sql.NullInt64
+	status     sql.NullInt64
+	accrual    sql.NullFloat64
 	created_at sql.NullString
 }
 
 type dbWithdrawals struct {
 	user_id    sql.NullString
 	created_at sql.NullString
-	withdrawal sql.NullInt64
+	withdrawal sql.NullFloat64
 }
 
 type DBStorage struct {
@@ -187,16 +186,15 @@ func (s *DBStorage) connectDB(ctx context.Context) (ok bool) {
 	return ok
 }
 
-// type Storage interface {
-// 	GetUser(ctx context.Context, name string) (u *schema.User, err error)
-// 	SaveUser(ctx context.Context, u schema.User) (err error)
-
-// 	SaveOrder(ctx context.Context, o schema.Order) (err error)
-// 	GetOrdersList(ctx context.Context, u schema.User) (wl schema.Orders, err error)
-
-// 	SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error)
-// 	GetWithdrawalsList(ctx context.Context, u schema.User) (wl schema.Withdrawals, err error)
-// }
+//GetUser(ctx context.Context, name string) (u *schema.User, err error)
+//SaveUser(ctx context.Context, u *schema.User) (err error)
+//
+//GetOrder(ctx context.Context, orderNumber int) (o *schema.Order, err error)
+//SaveOrder(ctx context.Context, o schema.Order) (err error)
+//GetOrdersList(ctx context.Context, userName string) (wl schema.Orders, err error)
+//
+//SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error)
+//GetWithdrawalsList(ctx context.Context, u schema.User) (wl *schema.Withdrawals, err error)
 
 func (s DBStorage) GetUser(ctx context.Context, name string) (u *schema.User, err error) {
 	if !s.connectDB(ctx) {
@@ -213,12 +211,12 @@ func (s DBStorage) GetUser(ctx context.Context, name string) (u *schema.User, er
 	return &schema.User{
 		User:       d.user_id.String,
 		Password:   d.password.String,
-		Accural:    d.accural.Int64,
-		Withdrawal: d.withdrawal.Int64,
+		Accrual:    d.accural.Float64,
+		Withdrawal: d.withdrawal.Float64,
 	}, nil
 }
 
-func (s DBStorage) SaveUser(ctx context.Context, u schema.User) (err error) {
+func (s DBStorage) SaveUser(ctx context.Context, u *schema.User) (err error) {
 	if !s.connectDB(ctx) {
 		return errors.New(message[0])
 	}
@@ -227,8 +225,8 @@ func (s DBStorage) SaveUser(ctx context.Context, u schema.User) (err error) {
 	d := dbUsers{
 		user_id:    sql.NullString{String: u.User, Valid: true},
 		password:   sql.NullString{String: u.Password, Valid: true},
-		accural:    sql.NullInt64{Int64: u.Accural, Valid: true},
-		withdrawal: sql.NullInt64{Int64: u.Withdrawal, Valid: true},
+		accural:    sql.NullFloat64{Float64: u.Accrual, Valid: true},
+		withdrawal: sql.NullFloat64{Float64: u.Withdrawal, Valid: true},
 	}
 
 	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsUsersTable, d.user_id, d.password, d.accural, d.withdrawal)
@@ -237,15 +235,53 @@ func (s DBStorage) SaveUser(ctx context.Context, u schema.User) (err error) {
 	return err
 }
 
-func (s DBStorage) GetOrdersList(ctx context.Context, u schema.User) (ol schema.Orders, err error) {
+func (s DBStorage) GetOrder(ctx context.Context, orderNumber int64) (o *schema.Order, err error) {
+	if !s.connectDB(ctx) {
+		return nil, errors.New(message[0])
+	}
+	defer s.conn.Release()
+	d := dbOrders{order_id: sql.NullInt64{Int64: orderNumber, Valid: true}}
+	row := s.conn.QueryRow(ctx, selectLineOrdersTable, &d.order_id)
+	err = row.Scan(&d.order_id, &d.user_id, &d.status, &d.accrual, &d.created_at)
+	if err != nil {
+		log.Printf("QueryRow failed: %v\n", err)
+		return nil, err
+	}
+	created, err := time.Parse(time.RFC3339, d.created_at.String)
+	return &schema.Order{
+		Order:   d.order_id.Int64,
+		User:    d.user_id.String,
+		Status:  d.status.Int64,
+		Accrual: d.accrual.Float64,
+		Created: schema.CreatedTime(created),
+	}, nil
+}
+func (s DBStorage) SaveOrder(ctx context.Context, o schema.Order) (err error) {
+	if !s.connectDB(ctx) {
+		return errors.New(message[0])
+	}
+	d := &dbOrders{
+		order_id:   sql.NullInt64{Int64: o.Order, Valid: true},
+		user_id:    sql.NullString{String: o.User, Valid: true},
+		accrual:    sql.NullFloat64{Float64: o.Accrual, Valid: true},
+		created_at: sql.NullString{String: time.Time(o.Created).Format(time.RFC3339), Valid: true},
+	}
+
+	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsOrdersTable, d.order_id, d.user_id, d.accrual, d.created_at)
+	logFatalf(message[3], err)
+	log.Println(tag)
+	return err
+}
+
+func (s DBStorage) GetOrdersList(ctx context.Context, userName string) (wl schema.Orders, err error) {
 	if !s.connectDB(ctx) {
 		return nil, errors.New(message[0])
 	}
 	defer s.conn.Release()
 
-	ol = make(schema.Orders)
+	wl = make(schema.Orders)
 
-	d := &dbOrders{user_id: sql.NullString{String: u.User, Valid: true}}
+	d := &dbOrders{user_id: sql.NullString{String: userName, Valid: true}}
 
 	rows, err := s.conn.Query(ctx, selectAllOrdersTableByUser, d.user_id)
 	if err != nil {
@@ -254,36 +290,51 @@ func (s DBStorage) GetOrdersList(ctx context.Context, u schema.User) (ol schema.
 	}
 	defer rows.Close()
 	for rows.Next() {
-		err = rows.Scan(d.order_id, d.user_id, d.accural, d.created_at)
+		err = rows.Scan(d.order_id, d.user_id, d.accrual, d.created_at)
+		logFatalf(message[5], err)
+		created, err := time.Parse(time.RFC3339, d.created_at.String)
+		logFatalf(message[6], err)
+		wl[d.order_id.Int64] = schema.Order{
+			Order:   d.order_id.Int64,
+			User:    d.user_id.String,
+			Accrual: d.accrual.Float64,
+			Created: schema.CreatedTime(created),
+		}
+	}
+
+	return wl, nil
+}
+
+func (s DBStorage) GetNewOrdersList(ctx context.Context) (ol schema.Orders, err error) {
+	if !s.connectDB(ctx) {
+		return nil, errors.New(message[0])
+	}
+	defer s.conn.Release()
+
+	ol = make(schema.Orders)
+
+	d := &dbOrders{status: sql.NullInt64{Int64: schema.OrderStatus["NEW"], Valid: true}}
+
+	rows, err := s.conn.Query(ctx, selectAllOrdersTableByStatus, d.status)
+	if err != nil {
+		log.Printf(message[4], err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(d.order_id, d.user_id, d.accrual, d.created_at)
 		logFatalf(message[5], err)
 		created, err := time.Parse(time.RFC3339, d.created_at.String)
 		logFatalf(message[6], err)
 		ol[d.order_id.Int64] = schema.Order{
 			Order:   d.order_id.Int64,
 			User:    d.user_id.String,
-			Accural: d.accural.Int64,
-			Created: created,
+			Accrual: d.accrual.Float64,
+			Created: schema.CreatedTime(created),
 		}
 	}
 
 	return ol, nil
-}
-
-func (s DBStorage) SaveOrder(ctx context.Context, o schema.Order) (err error) {
-	if !s.connectDB(ctx) {
-		return errors.New(message[0])
-	}
-	d := &dbOrders{
-		order_id:   sql.NullInt64{Int64: o.Order, Valid: true},
-		user_id:    sql.NullString{String: o.User, Valid: true},
-		accural:    sql.NullInt64{Int64: o.Accural, Valid: true},
-		created_at: sql.NullString{String: o.Created.Format(time.RFC3339), Valid: true},
-	}
-
-	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsOrdersTable, d.order_id, d.user_id, d.accural, d.created_at)
-	logFatalf(message[3], err)
-	log.Println(tag)
-	return err
 }
 
 func (s DBStorage) SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err error) {
@@ -295,15 +346,15 @@ func (s DBStorage) SaveWithdrawal(ctx context.Context, w schema.Withdrawal) (err
 
 	d := dbWithdrawals{
 		user_id:    sql.NullString{String: w.User, Valid: true},
-		created_at: sql.NullString{String: w.Created.Format(time.RFC3339), Valid: true},
-		withdrawal: sql.NullInt64{Int64: w.Withdrawal, Valid: true},
+		created_at: sql.NullString{String: time.Time(w.Processed).Format(time.RFC3339), Valid: true},
+		withdrawal: sql.NullFloat64{Float64: w.Withdrawal, Valid: true},
 	}
 	tag, err := s.conn.Exec(ctx, createOrUpdateIfExistsWithdrawalsTable, d.user_id, d.created_at, d.withdrawal)
 	logFatalf(message[3], err)
 	log.Println(tag)
 	return err
 }
-func (s DBStorage) GetWithdrawalsList(ctx context.Context, u schema.User) (wl *schema.Withdrawals, err error) {
+func (s DBStorage) GetWithdrawalsList(ctx context.Context, username string) (wl *schema.Withdrawals, err error) {
 	if !s.connectDB(ctx) {
 		return nil, errors.New(message[0])
 	}
@@ -311,7 +362,7 @@ func (s DBStorage) GetWithdrawalsList(ctx context.Context, u schema.User) (wl *s
 
 	wl = new(schema.Withdrawals)
 
-	d := &dbWithdrawals{user_id: sql.NullString{String: u.User, Valid: true}}
+	d := &dbWithdrawals{user_id: sql.NullString{String: username, Valid: true}}
 
 	rows, err := s.conn.Query(ctx, selectAllWithdrawalsTableByUser, d.user_id)
 	if err != nil {
@@ -327,8 +378,8 @@ func (s DBStorage) GetWithdrawalsList(ctx context.Context, u schema.User) (wl *s
 
 		w := schema.Withdrawal{
 			User:       d.user_id.String,
-			Created:    created,
-			Withdrawal: d.withdrawal.Int64,
+			Processed:  schema.CreatedTime(created),
+			Withdrawal: d.withdrawal.Float64,
 		}
 		*wl = append(*wl, w)
 	}

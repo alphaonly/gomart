@@ -12,16 +12,20 @@ import (
 	"github.com/alphaonly/gomart/internal/schema"
 )
 
-const ServerDefaultJSON = `{"RUN_ADDRESS":"localhost:8080",
-"DATABASE_URI": "",
-"ACCRUAL_SYSTEM_ADDRESS":"",
-"RESTORE":true,"KEY":""}`
+const ServerDefaultJSON = `{
+"RUN_ADDRESS":"localhost:8080",
+"DATABASE_URI": "postgres://postgres:mypassword@localhost:5432/yandex",
+"ACCRUAL_SYSTEM_ADDRESS":"localhost:8080",
+"RESTORE":true,"KEY":"",
+"ACCRUAL_TIME":200
+}`
 
 type ServerConfiguration struct {
 	RunAddress           string `json:"RUN_ADDRESS,omitempty"`
 	Port                 string `json:"PORT,omitempty"`
 	DatabaseURI          string `json:"DATABASE_URI,omitempty"`
-	AccuralSystemAddress string `json:"ACCRUAL_SYSTEM_ADDRESS,omitempty"`
+	AccrualSystemAddress string `json:"ACCRUAL_SYSTEM_ADDRESS,omitempty"`
+	AccrualTime          int64  `json:"ACCRUAL_TIME,omitempty"`
 	EnvChanged           map[string]bool
 }
 
@@ -56,7 +60,7 @@ func NewServerConf(options ...ServerConfigurationOption) *ServerConfiguration {
 
 func UpdateSCFromEnvironment(c *ServerConfiguration) {
 	c.RunAddress = getEnv("RUN_ADDRESS", &StrValue{c.RunAddress}, c.EnvChanged).(string)
-	c.AccuralSystemAddress = getEnv("ACCRUAL_SYSTEM_ADDRESS", &StrValue{c.AccuralSystemAddress}, c.EnvChanged).(string)
+	c.AccrualSystemAddress = getEnv("ACCRUAL_SYSTEM_ADDRESS", &StrValue{c.AccrualSystemAddress}, c.EnvChanged).(string)
 	//PORT is derived from ADDRESS
 	c.Port = ":" + strings.Split(c.RunAddress, ":")[1]
 	c.DatabaseURI = getEnv("DATABASE_URI", &StrValue{c.DatabaseURI}, c.EnvChanged).(string)
@@ -68,9 +72,7 @@ func UpdateSCFromFlags(c *ServerConfiguration) {
 
 	var (
 		a = flag.String("a", dc.RunAddress, "Domain name and :port")
-
-		r = flag.String("r", dc.AccuralSystemAddress, "Restore from external storage:true/false")
-
+		r = flag.String("r", dc.AccrualSystemAddress, "Restore from external storage:true/false")
 		d = flag.String("d", dc.DatabaseURI, "database destination string")
 	)
 	flag.Parse()
@@ -84,8 +86,8 @@ func UpdateSCFromFlags(c *ServerConfiguration) {
 		log.Printf(message, "PORT", c.Port)
 	}
 	if !c.EnvChanged["ACCRUAL_SYSTEM_ADDRESS"] {
-		c.AccuralSystemAddress = *r
-		log.Printf(message, "ACCRUAL_SYSTEM_ADDRESS", c.AccuralSystemAddress)
+		c.AccrualSystemAddress = *r
+		log.Printf(message, "ACCRUAL_SYSTEM_ADDRESS", c.AccrualSystemAddress)
 	}
 	if !c.EnvChanged["DATABASE_URI"] {
 		c.DatabaseURI = *d

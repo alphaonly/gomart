@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/alphaonly/gomart/internal/server/accrual"
 	"log"
 
 	db "github.com/alphaonly/gomart/internal/server/storage/implementations/dbstorage"
@@ -15,27 +16,23 @@ import (
 func main() {
 
 	configuration := conf.NewServerConf(conf.UpdateSCFromEnvironment, conf.UpdateSCFromFlags)
-	// configuration.UpdateFromEnvironment()
-	// configuration.UpdateFromFlags()
 
 	var (
 		externalStorage stor.Storage
 		internalStorage stor.Storage
 	)
-	// externalStorage = nil
-	// internalStorage = mapstorage.New()
 
 	externalStorage = nil
 	internalStorage = db.NewDBStorage(context.Background(), configuration.DatabaseURI)
 
 	handlers := &handlers.Handlers{
-		Storage: internalStorage,
-		// Signer:  signchecker.NewSHA256(configuration.Key),
-		Conf: conf.ServerConfiguration{DatabaseURI: configuration.DatabaseURI},
+		Storage:       internalStorage,
+		Conf:          conf.ServerConfiguration{DatabaseURI: configuration.DatabaseURI},
 		EntityHandler: &handlers.EntityHandler{Storage: internalStorage},
 	}
+	accrualChecker := accrual.NewChecker(configuration.AccrualSystemAddress, configuration.AccrualTime, internalStorage)
 
-	gmServer := server.New(configuration, externalStorage, handlers)
+	gmServer := server.New(configuration, externalStorage, handlers, accrualChecker)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

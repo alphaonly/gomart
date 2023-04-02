@@ -10,19 +10,18 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	storage "github.com/alphaonly/gomart/internal/server/storage/interfaces"
 
 	"github.com/alphaonly/gomart/internal/configuration"
 	"github.com/alphaonly/gomart/internal/schema"
-	"github.com/alphaonly/gomart/internal/signchecker"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
 type Handlers struct {
 	Storage       storage.Storage
-	Signer        signchecker.Signer
 	Conf          configuration.ServerConfiguration
 	EntityHandler *EntityHandler
 }
@@ -107,33 +106,23 @@ func (h *Handlers) NewRouter() chi.Router {
 	// getListCompressed = h.HandleGetMetricFieldListSimple(nil)
 	)
 	r := chi.NewRouter()
-	//
 
-	// var p PingHandler
 	r.Route("/", func(r chi.Router) {
 		// r.Get("/", getListCompressed)
 		r.Get("/ping", h.HandlePing)
 		r.Get("/ping/", h.HandlePing)
 		r.Get("/check/", h.HandleCheckHealth)
-		// r.Get("/value/{TYPE}/{NAME}", h.HandleGetMetricValue)
-		// r.Post("/value", postJSONAndGetCompressed)
-		// // r.Post("/value/", postJSONAndGetCompressed)
-		// r.Post("/update", postJSONAndGetCompressed)
-		// r.Post("/update/", postJSONAndGetCompressed)
-		// r.Post("/updates", postJSONAndGetCompressedBatch)
-		// r.Post("/updates/", postJSONAndGetCompressedBatch)
-		// r.Post("/update/{TYPE}/{NAME}/{VALUE}", h.HandlePostMetric)
-		// r.Post("/update/{TYPE}/{NAME}/", h.HandlePostErrorPattern)
-		// r.Post("/update/{TYPE}/", h.HandlePostErrorPatternNoName)
-
 		r.Post("/api/user/register", h.PostValidation(h.HandlePostUserRegister(nil)))
-		r.Post("/api/{USER}/login", h.HandlePostUserLogin(nil))
-		r.Post("/api/{USER}/orders", h.HandlePostUserOrders(nil))
-		r.Post("/api/{USER}/balance/withdraw", h.HandlePostUserBalanceWithdraw(nil))
-		r.Get("/api/{USER}/orders", h.HandleGetUserOrders(nil))
-		r.Get("/api/{USER}/balance", h.HandleGetUserBalance(nil))
-		r.Get("/api/{USER}/withdrawals", h.HandleGetUserWithdrawals(nil))
+		r.Post("/api/user/login", h.PostValidation(h.HandlePostUserLogin(nil)))
+		r.Post("/api/user/orders", h.PostValidation(h.BasicUserAuthorization(h.HandlePostUserOrders(nil))))
+		r.Post("/api/user/balance/withdraw", h.PostValidation(h.BasicUserAuthorization(h.HandlePostUserBalanceWithdraw(nil))))
+		r.Get("/api/user/orders", h.GetValidation(h.BasicUserAuthorization(h.HandleGetUserOrders(nil))))
+		r.Get("/api/user/balance", h.GetValidation(h.BasicUserAuthorization(h.HandleGetUserBalance(nil))))
+		r.Get("/api/user/withdrawals", h.GetValidation(h.BasicUserAuthorization(h.HandleGetUserWithdrawals(nil))))
 
+		//Mock for accrual system (in case similar addresses) returns +5
+		r.Get("/api/orders/{number}", h.GetValidation(h.HandleGetUserWithdrawals(nil)))
+		//GET /api/orders/{number}
 	})
 
 	return r
@@ -183,6 +172,7 @@ func (h *Handlers) PostValidation(next http.Handler) http.HandlerFunc {
 		}
 	}
 }
+
 func (h *Handlers) HandlePostUserRegister(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HandlePostUserRegister invoked")
@@ -304,77 +294,222 @@ func (h *Handlers) HandlePostUserOrders(next http.Handler) http.HandlerFunc {
 			httpError(w, fmt.Errorf("unrecognized request body %w", err), http.StatusBadRequest)
 			return
 		}
-		orderNumber, err := strconv.Atoi(string(requestByteData))
-		if err != nil {
-			httpError(w, fmt.Errorf("unrecognized order number %w", err), http.StatusBadRequest)
-			return
-		}
-		ok, err := h.EntityHandler.ValidateOrderNumber(orderNumber)
-		if err != nil {
-			httpError(w, fmt.Errorf("order %v Luhn check  internal error %w", orderNumber, err), http.StatusInternalServerError)
-			return
-		}
-		if !ok {
-			httpError(w, fmt.Errorf("order's number %v not valid", orderNumber), http.StatusInternalServerError)
-			return
-		}
 
-		orderList, err := h.Storage.GetOrdersList(r.Context(), schema.User{User: string(user)})
+		orderNumber, err := h.EntityHandler.ValidateOrderNumber(r.Context(), string(requestByteData), string(user))
 		if err != nil {
-			httpError(w, fmt.Errorf("cannot get orders list by user  %w", err), http.StatusInternalServerError)
-			return
-		}
-		val, ok := orderList[int64(orderNumber)]
-		if ok {
-			if val.User == string(user) {
-				log.Printf("order %v has already been created by user %v", orderNumber, user)
-				w.WriteHeader(http.StatusOK)
-			} else {
-				log.Printf("order %v has already been created by different %v", orderNumber, user)
-				w.WriteHeader(http.StatusOK)
+			if strings.Contains(err.Error(), "400") {
+				httpErrorW(w, fmt.Sprintf("order number  %v insufficient format %w", orderNumber), err, http.StatusBadRequest)
+				return
 			}
-
+			if strings.Contains(err.Error(), "422") {
+				httpErrorW(w, fmt.Sprintf("order %v insufficient format %w", orderNumber), err, http.StatusUnprocessableEntity)
+				return
+			}
+			if strings.Contains(err.Error(), "409") {
+				httpErrorW(w, fmt.Sprintf("order %v exists %w", orderNumber), err, http.StatusConflict)
+				return
+			}
+			if strings.Contains(err.Error(), "200") {
+				log.Printf("order %v exists: %v", orderNumber, err.Error())
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 		}
-		//TODO: GetOrder needed by number to compare user
-		// order := schema.Order{Order: int64(orderNumber)}
+		//Create object order
+		o := schema.Order{
+			Order:   orderNumber,
+			User:    string(user),
+			Status:  schema.OrderStatus["NEW"],
+			Created: schema.CreatedTime(time.Now()),
+		}
+		err = h.Storage.SaveOrder(r.Context(), o)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("order's number %v not saved", orderNumber), err, http.StatusInternalServerError)
+			return
+		}
 		//Response
-
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 func (h *Handlers) HandleGetUserOrders(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HandleGetUserOrders invoked")
-		//Get Parameters
 
+		//Get parameters from previous handler
+		userName, err := getPreviousParameter[schema.CtxUName, schema.ContextKey](r, schema.CtxKeyUName)
+		if err != nil {
+			httpError(w, fmt.Errorf("cannot get userName from context %w", err), http.StatusInternalServerError)
+			return
+		}
 		//Handling
+		orderList, err := h.EntityHandler.GetUsersOrders(r.Context(), string(userName))
+		if strings.Contains(err.Error(), "204") {
+			httpErrorW(w, fmt.Sprintf("No orders for user %v", userName), err, http.StatusNoContent)
+			return
+		}
 		//Response
+		bytes, err := json.Marshal(orderList)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v order list json marshal error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(bytes)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v HandleGetUserOrders write response error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 	}
 }
 func (h *Handlers) HandleGetUserBalance(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HandleGetUserBalance invoked")
-		//Get Parameters
-
+		//Get parameters from previous handler
+		userName, err := getPreviousParameter[schema.CtxUName, schema.ContextKey](r, schema.CtxKeyUName)
+		if err != nil {
+			httpError(w, fmt.Errorf("cannot get userName from context %w", err), http.StatusInternalServerError)
+			return
+		}
 		//Handling
+		balance, err := h.EntityHandler.GetUserBalance(r.Context(), string(userName))
+		if err != nil {
+			httpError(w, fmt.Errorf("cannot get user data by userName %v from context %w", userName, err), http.StatusInternalServerError)
+			return
+		}
 		//Response
+		bytes, err := json.Marshal(balance)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v balance json marshal error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(bytes)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v balance write response error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 	}
 }
 func (h *Handlers) HandlePostUserBalanceWithdraw(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HandlePostUserBalanceWithdraw invoked")
-		//Get Parameters
-
+		//Get parameters from previous handler
+		userName, err := getPreviousParameter[schema.CtxUName, schema.ContextKey](r, schema.CtxKeyUName)
+		if err != nil {
+			httpError(w, fmt.Errorf("cannot get userName from context %w", err), http.StatusInternalServerError)
+			return
+		}
 		//Handling
+		requestByteData, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Unrecognized json request ", http.StatusBadRequest)
+			return
+		}
+		userWithdrawalRequest := UserWithdrawalRequest{}
+		err = json.Unmarshal(requestByteData, &userWithdrawalRequest)
+		if err != nil {
+			http.Error(w, "Error json-marshal request data", http.StatusBadRequest)
+			return
+		}
+		err = h.EntityHandler.MakeUserWithdrawal(r.Context(), string(userName), userWithdrawalRequest)
+		if err != nil {
+			if strings.Contains(err.Error(), "402") {
+				httpErrorW(w, "make withdrawal error", err, http.StatusPaymentRequired)
+				return
+			}
+			if strings.Contains(err.Error(), "422") {
+				httpErrorW(w, "order number invalid", err, http.StatusUnprocessableEntity)
+				return
+			}
+			if strings.Contains(err.Error(), "500") {
+				httpErrorW(w, "internal error", err, http.StatusInternalServerError)
+				return
+			}
+		}
 		//Response
+		w.WriteHeader(http.StatusOK)
 	}
 }
 func (h *Handlers) HandleGetUserWithdrawals(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("HandleGetUserWithdrawals invoked")
-		//Get Parameters
-
+		//Get parameters from previous handler
+		userName, err := getPreviousParameter[schema.CtxUName, schema.ContextKey](r, schema.CtxKeyUName)
+		if err != nil {
+			httpError(w, fmt.Errorf("can not get userName from context %w", err), http.StatusInternalServerError)
+			return
+		}
 		//Handling
+		wList, err := h.EntityHandler.GetUsersWithdrawals(r.Context(), string(userName))
+		if err != nil {
+			if strings.Contains(err.Error(), "500") {
+				httpErrorW(w, "internal error", err, http.StatusInternalServerError)
+				return
+			}
+			if strings.Contains(err.Error(), "204") {
+				httpErrorW(w, "no withdrawals", err, http.StatusNoContent)
+				return
+			}
+		}
 		//Response
+		bytes, err := json.Marshal(wList)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v withdrawals list json marshal error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(bytes)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("user %v withdrawals list write response error", userName), err, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (h *Handlers) HandleGetOrderAccrual(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HandleGetOrderAccrual invoked")
+		//Handling
+		orderNumberStr := chi.URLParam(r, "number")
+		if orderNumberStr == "" {
+			httpError(w, fmt.Errorf("order number  %v is empty", orderNumberStr), http.StatusBadRequest)
+			return
+		}
+
+		orderNumber, err := strconv.ParseInt(orderNumberStr, 10, 64)
+		if err != nil {
+			httpError(w, fmt.Errorf("order number  %v is bad format", orderNumberStr), http.StatusBadRequest)
+			return
+		}
+
+		accrual := 5.3
+
+		OrderAcrualResponse := struct {
+			order   int64
+			status  string
+			accrual float64
+		}{
+			order:   orderNumber,
+			status:  "PROCESSED",
+			accrual: accrual,
+		}
+
+		//Response
+		bytes, err := json.Marshal(OrderAcrualResponse)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("order occrual response json marshal error"), err, http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(bytes)
+		if err != nil {
+			httpErrorW(w, fmt.Sprintf("order occrual response write response error"), err, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 	}
 }
 

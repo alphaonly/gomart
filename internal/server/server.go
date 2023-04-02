@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/alphaonly/gomart/internal/server/accrual"
 	"log"
 	"net/http"
 	"os"
@@ -23,18 +24,24 @@ type Server struct {
 	ExternalStorage stor.Storage
 	handlers        *handlers.Handlers
 	httpServer      *http.Server
+	AccrualChecker  *accrual.Checker
 }
 
 func NewConfiguration(serverPort string) *Configuration {
 	return &Configuration{serverPort: ":" + serverPort}
 }
 
-func New(configuration *conf.ServerConfiguration, ExStorage stor.Storage, handlers *handlers.Handlers) (server Server) {
+func New(
+	configuration *conf.ServerConfiguration,
+	ExStorage stor.Storage,
+	handlers *handlers.Handlers,
+	accrualChecker *accrual.Checker) (server Server) {
 	return Server{
 		configuration:   configuration,
 		InternalStorage: handlers.Storage,
 		ExternalStorage: ExStorage,
 		handlers:        handlers,
+		AccrualChecker:  accrualChecker,
 	}
 }
 
@@ -50,14 +57,12 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// маршрутизация запросов обработчику
 	s.httpServer = &http.Server{
-		Addr: s.configuration.RunAddress,
-		Handler:  s.handlers.NewRouter(),
+		Addr:    s.configuration.RunAddress,
+		Handler: s.handlers.NewRouter(),
 	}
 
-	// s.restoreData(ctx, s.ExternalStorage)
-
 	go s.ListenData(ctx)
-	// go s.ParkData(ctx, s.ExternalStorage)
+	go s.AccrualChecker.Run(ctx)
 
 	osSignal := make(chan os.Signal, 1)
 	signal.Notify(osSignal, os.Interrupt)
